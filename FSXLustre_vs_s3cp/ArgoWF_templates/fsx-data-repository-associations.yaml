@@ -1,0 +1,91 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: fsx-data-repository-associations
+  namespace: argowf
+spec:
+  entrypoint: workload
+  serviceAccountName: argowf-sa
+  templates:
+  - name: workload
+    inputs:
+      parameters:
+        - name: fsx_associations
+        - name: mount_path
+        - name: pvc_name
+    dag:
+      tasks:
+        - name: fsx-lustre-create-associations
+          template: fsx-lustre-create-associations
+          arguments:
+            parameters:
+              - name: fsx_associations
+                value: "{{inputs.parameters.fsx_associations}}"
+              - name: mount_path
+                value: "{{inputs.parameters.mount_path}}"
+              - name: pvc_name      
+                value: "{{inputs.parameters.pvc_name}}"
+
+  - name: fsx-lustre-create-associations
+    nodeSelector:
+      karpenter.sh/provisioner-name: "fsx-provisioner"
+    inputs:
+      parameters:
+        - name: fsx_associations
+        - name: mount_path
+        - name: pvc_name
+    script:
+      image: demisto/boto3py3:1.0.0.64080
+      command: ["python"]
+      resources:
+        requests:
+          memory: "1024Mi"
+          cpu: "2048m"
+        limits:
+          memory: "1024Mi"
+          cpu: "2048m"
+      source: |
+        import boto3
+        import time
+
+        requests={{inputs.parameters.fsx_associations}}
+
+        def main():
+            client = boto3.client('fsx')
+            for request in requests:
+                s3_config={}
+                if request["import_policy"] !=[]:
+                    import_policy={"AutoImportPolicy": {'Events': request["import_policy"]}}
+                    s3_config.update(import_policy)
+                if request["export_policy"] !=[]:
+                    export_policy={"AutoExportPolicy": {'Events': request["export_policy"]}}
+                    s3_config.update(export_policy)
+                print(s3_config)
+                if s3_config != {}:
+                    response = client.create_data_repository_association(
+                        FileSystemId=request["filesystem_id"],
+                        FileSystemPath=request["file_system_path"],
+                        DataRepositoryPath=request["data_repository_path"],
+                        BatchImportMetaDataOnCreate=eval(request["import_metadata"]),
+                        S3=s3_config
+                    )
+                else:
+                    response = client.create_data_repository_association(
+                        FileSystemId=request["filesystem_id"],
+                        FileSystemPath=request["file_system_path"],
+                        DataRepositoryPath=request["data_repository_path"],
+                        BatchImportMetaDataOnCreate=eval(request["import_metadata"]),
+                    ) 
+                association_id = response["Association"]["AssociationId"]
+                status="CREATING"
+                while(status != "AVAILABLE" and status != "FAILED"):
+                    response = client.describe_data_repository_associations(
+                        AssociationIds=[
+                            association_id,
+                        ],
+                    )
+                    status=response["Associations"][0]["Lifecycle"]
+                    print(response)
+                    time.sleep(10)
+
+        main()
