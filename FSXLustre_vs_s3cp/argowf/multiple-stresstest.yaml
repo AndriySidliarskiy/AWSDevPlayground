@@ -102,7 +102,7 @@ spec:
           arguments:
             parameters:
               - name: create_fsx_associations
-                value: "{{workflow.parameters.create_fsx_associations}}"
+                value: "false"
               - name: task_id
                 value: "2"
               - name: pvc_name
@@ -132,7 +132,7 @@ spec:
           arguments:
             parameters:
               - name: create_fsx_associations
-                value: "{{workflow.parameters.create_fsx_associations}}"
+                value: "false"
               - name: task_id
                 value: "3"
               - name: pvc_name
@@ -162,7 +162,7 @@ spec:
           arguments:
             parameters:
               - name: create_fsx_associations
-                value: "{{workflow.parameters.create_fsx_associations}}"
+                value: "false"
               - name: task_id
                 value: "4"
               - name: pvc_name
@@ -192,7 +192,7 @@ spec:
           arguments:
             parameters:
               - name: create_fsx_associations
-                value: "{{workflow.parameters.create_fsx_associations}}"
+                value: "false"
               - name: task_id
                 value: "5"
               - name: pvc_name
@@ -222,7 +222,7 @@ spec:
           arguments:
             parameters:
               - name: create_fsx_associations
-                value: "{{workflow.parameters.create_fsx_associations}}"
+                value: "false"
               - name: task_id
                 value: "6"
               - name: pvc_name
@@ -252,7 +252,7 @@ spec:
           arguments:
             parameters:
               - name: create_fsx_associations
-                value: "{{workflow.parameters.create_fsx_associations}}"
+                value: "false"
               - name: task_id
                 value: "7"
               - name: pvc_name
@@ -282,7 +282,7 @@ spec:
           arguments:
             parameters:
               - name: create_fsx_associations
-                value: "{{workflow.parameters.create_fsx_associations}}"
+                value: "false"
               - name: task_id
                 value: "8"
               - name: pvc_name
