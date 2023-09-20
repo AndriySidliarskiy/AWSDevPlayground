@@ -1,0 +1,16 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: lustre-persistent1-sc
+provisioner: fsx.csi.aws.com
+parameters:
+  dataCompressionType: NONE
+  deploymentType: PERSISTENT_1
+  fileSystemTypeVersion: '2.12'
+  perUnitStorageThroughput: '200'
+  securityGroupIds: <PUT_YOUR_SG> #sg-0245f48b9d4a02e91
+  subnetId: <PUT_YOUR_SUBNET> #subnet-0ed164cb9ae157e9e
+reclaimPolicy: Delete
+mountOptions:
+  - flock
+volumeBindingMode: Immediate

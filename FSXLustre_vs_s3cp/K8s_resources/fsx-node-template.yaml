@@ -2,12 +2,6 @@ apiVersion: karpenter.k8s.aws/v1alpha1
 kind: AWSNodeTemplate
 metadata:
   name: fsx-node-template
-status:
-  securityGroups:
-    - id: <PUT_YOUR_SG>
-  subnets:
-    - id: <PUT_YOUR_SUBNET>
-      zone: <PUT_YOUR_AZ>
 spec:
   blockDeviceMappings:
     - deviceName: /dev/xvda
