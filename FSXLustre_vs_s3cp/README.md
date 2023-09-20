@@ -11,4 +11,4 @@ The s3 cp command is not a standard command in Unix or Linux, but it appears to 
 
 The s3 cp command in AWS CLI is used to copy files and directories to and from an Amazon S3 bucket. Here's a basic overview of how it works:
 
-This folder has two child folders with name **argowf_templates** and **k8s_manifest** each of them is used to prepare your environment to run comprasion between s3cp and fsx lustre so please follow the documentation in each of them and hopefully you will succeed. 
+`This folder has two child folders with name argowf_templates and k8s_manifest each of them is used to prepare your environment to run comprasion between s3cp and fsx lustre so please follow the documentation in each of them and hopefully you will succeed.`
