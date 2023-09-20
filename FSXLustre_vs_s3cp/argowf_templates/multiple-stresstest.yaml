@@ -1,0 +1,310 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: multiple-stresstest
+  namespace: argowf
+spec:
+  entrypoint: workload
+  serviceAccountName: argowf-sa
+  arguments:
+    parameters:
+      - name: create_fsx_associations
+        value: true
+        enum: 
+          -   true
+          -   false
+      - name: pvc_name
+      - name: pvc_size
+        value: 1200Gi
+        enum:
+          -   1200Gi
+          -   2400Gi
+          -   4800Gi
+          -   9600Gi
+      - name: namespace
+      - name: instance_type
+        value: c5.xlarge
+        enum:
+          -   c5.xlarge
+          -   c5.9xlarge
+          -   c5.24xlarge
+      - name: action_file_size
+        value: 5000m
+        enum:
+          -   5000m
+          -   10000m
+          -   25000m
+          -   50000m
+          -   100000m
+          -   200000m
+          -   500000m
+      - name: download_bucket_name
+        value: c2i-cs-andriis-euwe1-deployment-834307297212
+        enum:
+          -   c2i-cs-andriis-euwe1-deployment-834307297212
+      - name: download_file_name
+      - name: multipart_chunksize
+        value: 8
+        enum:
+          -   8
+          -   16
+          -   40
+          -   100
+      - name: multipart_threshold
+        value: 16
+        enum:
+          -   16
+          -   32
+          -   80
+          -   200
+      - name: upload_bucket_name
+        value: c2i-cs-andriis-euwe1-output-834307297212
+        enum:
+          -   c2i-cs-andriis-euwe1-output-834307297212
+  templates:
+  - name: workload
+    dag:
+      tasks:
+        - name: input-1
+          templateRef:
+            name: stresstest
+            template: workload
+          arguments:
+            parameters:
+              - name: create_fsx_associations
+                value: "{{workflow.parameters.create_fsx_associations}}"
+              - name: task_id
+                value: "1"
+              - name: pvc_name
+                value: "{{workflow.parameters.pvc_name}}"
+              - name: pvc_size
+                value: "{{workflow.parameters.pvc_size}}"
+              - name: namespace
+                value: "{{workflow.parameters.namespace}}"
+              - name: instance_type
+                value: "{{workflow.parameters.instance_type}}"
+              - name: action_file_size
+                value: "{{workflow.parameters.action_file_size}}"
+              - name: download_bucket_name
+                value: "{{workflow.parameters.download_bucket_name}}"
+              - name: download_file_name
+                value: "{{workflow.parameters.download_file_name}}"
+              - name: multipart_chunksize
+                value: "{{workflow.parameters.multipart_chunksize}}"
+              - name: multipart_threshold
+                value: "{{workflow.parameters.multipart_threshold}}"
+              - name: upload_bucket_name
+                value: "{{workflow.parameters.upload_bucket_name}}"
+        - name: input-2
+          templateRef:
+            name: stresstest
+            template: workload
+          arguments:
+            parameters:
+              - name: create_fsx_associations
+                value: "false"
+              - name: task_id
+                value: "2"
+              - name: pvc_name
+                value: "{{workflow.parameters.pvc_name}}"
+              - name: pvc_size
+                value: "{{workflow.parameters.pvc_size}}"
+              - name: namespace
+                value: "{{workflow.parameters.namespace}}"
+              - name: instance_type
+                value: "{{workflow.parameters.instance_type}}"
+              - name: action_file_size
+                value: "{{workflow.parameters.action_file_size}}"
+              - name: download_bucket_name
+                value: "{{workflow.parameters.download_bucket_name}}"
+              - name: download_file_name
+                value: "{{workflow.parameters.download_file_name}}"
+              - name: multipart_chunksize
+                value: "{{workflow.parameters.multipart_chunksize}}"
+              - name: multipart_threshold
+                value: "{{workflow.parameters.multipart_threshold}}"
+              - name: upload_bucket_name
+                value: "{{workflow.parameters.upload_bucket_name}}"
+        - name: input-3
+          templateRef:
+            name: stresstest
+            template: workload
+          arguments:
+            parameters:
+              - name: create_fsx_associations
+                value: "false"
+              - name: task_id
+                value: "3"
+              - name: pvc_name
+                value: "{{workflow.parameters.pvc_name}}"
+              - name: pvc_size
+                value: "{{workflow.parameters.pvc_size}}"
+              - name: namespace
+                value: "{{workflow.parameters.namespace}}"
+              - name: instance_type
+                value: "{{workflow.parameters.instance_type}}"
+              - name: action_file_size
+                value: "{{workflow.parameters.action_file_size}}"
+              - name: download_bucket_name
+                value: "{{workflow.parameters.download_bucket_name}}"
+              - name: download_file_name
+                value: "{{workflow.parameters.download_file_name}}"
+              - name: multipart_chunksize
+                value: "{{workflow.parameters.multipart_chunksize}}"
+              - name: multipart_threshold
+                value: "{{workflow.parameters.multipart_threshold}}"
+              - name: upload_bucket_name
+                value: "{{workflow.parameters.upload_bucket_name}}"
+        - name: input-4
+          templateRef:
+            name: stresstest
+            template: workload
+          arguments:
+            parameters:
+              - name: create_fsx_associations
+                value: "false"
+              - name: task_id
+                value: "4"
+              - name: pvc_name
+                value: "{{workflow.parameters.pvc_name}}"
+              - name: pvc_size
+                value: "{{workflow.parameters.pvc_size}}"
+              - name: namespace
+                value: "{{workflow.parameters.namespace}}"
+              - name: instance_type
+                value: "{{workflow.parameters.instance_type}}"
+              - name: action_file_size
+                value: "{{workflow.parameters.action_file_size}}"
+              - name: download_bucket_name
+                value: "{{workflow.parameters.download_bucket_name}}"
+              - name: download_file_name
+                value: "{{workflow.parameters.download_file_name}}"
+              - name: multipart_chunksize
+                value: "{{workflow.parameters.multipart_chunksize}}"
+              - name: multipart_threshold
+                value: "{{workflow.parameters.multipart_threshold}}"
+              - name: upload_bucket_name
+                value: "{{workflow.parameters.upload_bucket_name}}"
+        - name: input-5
+          templateRef:
+            name: stresstest
+            template: workload
+          arguments:
+            parameters:
+              - name: create_fsx_associations
+                value: "false"
+              - name: task_id
+                value: "5"
+              - name: pvc_name
+                value: "{{workflow.parameters.pvc_name}}"
+              - name: pvc_size
+                value: "{{workflow.parameters.pvc_size}}"
+              - name: namespace
+                value: "{{workflow.parameters.namespace}}"
+              - name: instance_type
+                value: "{{workflow.parameters.instance_type}}"
+              - name: action_file_size
+                value: "{{workflow.parameters.action_file_size}}"
+              - name: download_bucket_name
+                value: "{{workflow.parameters.download_bucket_name}}"
+              - name: download_file_name
+                value: "{{workflow.parameters.download_file_name}}"
+              - name: multipart_chunksize
+                value: "{{workflow.parameters.multipart_chunksize}}"
+              - name: multipart_threshold
+                value: "{{workflow.parameters.multipart_threshold}}"
+              - name: upload_bucket_name
+                value: "{{workflow.parameters.upload_bucket_name}}"
+        - name: input-6
+          templateRef:
+            name: stresstest
+            template: workload
+          arguments:
+            parameters:
+              - name: create_fsx_associations
+                value: "false"
+              - name: task_id
+                value: "6"
+              - name: pvc_name
+                value: "{{workflow.parameters.pvc_name}}"
+              - name: pvc_size
+                value: "{{workflow.parameters.pvc_size}}"
+              - name: namespace
+                value: "{{workflow.parameters.namespace}}"
+              - name: instance_type
+                value: "{{workflow.parameters.instance_type}}"
+              - name: action_file_size
+                value: "{{workflow.parameters.action_file_size}}"
+              - name: download_bucket_name
+                value: "{{workflow.parameters.download_bucket_name}}"
+              - name: download_file_name
+                value: "{{workflow.parameters.download_file_name}}"
+              - name: multipart_chunksize
+                value: "{{workflow.parameters.multipart_chunksize}}"
+              - name: multipart_threshold
+                value: "{{workflow.parameters.multipart_threshold}}"
+              - name: upload_bucket_name
+                value: "{{workflow.parameters.upload_bucket_name}}"
+        - name: input-7
+          templateRef:
+            name: stresstest
+            template: workload
+          arguments:
+            parameters:
+              - name: create_fsx_associations
+                value: "false"
+              - name: task_id
+                value: "7"
+              - name: pvc_name
+                value: "{{workflow.parameters.pvc_name}}"
+              - name: pvc_size
+                value: "{{workflow.parameters.pvc_size}}"
+              - name: namespace
+                value: "{{workflow.parameters.namespace}}"
+              - name: instance_type
+                value: "{{workflow.parameters.instance_type}}"
+              - name: action_file_size
+                value: "{{workflow.parameters.action_file_size}}"
+              - name: download_bucket_name
+                value: "{{workflow.parameters.download_bucket_name}}"
+              - name: download_file_name
+                value: "{{workflow.parameters.download_file_name}}"
+              - name: multipart_chunksize
+                value: "{{workflow.parameters.multipart_chunksize}}"
+              - name: multipart_threshold
+                value: "{{workflow.parameters.multipart_threshold}}"
+              - name: upload_bucket_name
+                value: "{{workflow.parameters.upload_bucket_name}}"
+        - name: input-8
+          templateRef:
+            name: stresstest
+            template: workload
+          arguments:
+            parameters:
+              - name: create_fsx_associations
+                value: "false"
+              - name: task_id
+                value: "8"
+              - name: pvc_name
+                value: "{{workflow.parameters.pvc_name}}"
+              - name: pvc_size
+                value: "{{workflow.parameters.pvc_size}}"
+              - name: namespace
+                value: "{{workflow.parameters.namespace}}"
+              - name: instance_type
+                value: "{{workflow.parameters.instance_type}}"
+              - name: action_file_size
+                value: "{{workflow.parameters.action_file_size}}"
+              - name: download_bucket_name
+                value: "{{workflow.parameters.download_bucket_name}}"
+              - name: download_file_name
+                value: "{{workflow.parameters.download_file_name}}"
+              - name: multipart_chunksize
+                value: "{{workflow.parameters.multipart_chunksize}}"
+              - name: multipart_threshold
+                value: "{{workflow.parameters.multipart_threshold}}"
+              - name: upload_bucket_name
+                value: "{{workflow.parameters.upload_bucket_name}}"
+
+
+

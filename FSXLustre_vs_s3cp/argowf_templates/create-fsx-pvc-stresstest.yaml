@@ -1,0 +1,186 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: create-fsx-pvc-stresstest
+spec:
+  serviceAccountName: argowf-sa
+  entrypoint: workload
+  templates:
+    - name: workload
+      inputs:
+        parameters:
+          - name: pvc-name
+          - name: pvc-size
+          - name: namespace
+      dag:
+        tasks:
+          - name: create-pvc
+            arguments:
+              parameters:
+                - name: pvc-name
+                  value: "{{inputs.parameters.pvc-name}}"
+                - name: pvc-size
+                  value: "{{inputs.parameters.pvc-size}}"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+            template: create-pvc
+          - name: get-fsx-id
+            arguments:
+              parameters:
+                - name: pv-name
+                  value: "{{tasks.create-pvc.outputs.parameters.pv-name}}"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+            depends: "create-pvc.Succeeded"
+            template: get-fsx-id
+          - name: create-fsx-id-secret
+            arguments:
+              parameters:
+                - name: pvc-name
+                  value: "{{inputs.parameters.pvc-name}}"
+                - name: fsx-id
+                  value: "{{tasks.get-fsx-id.outputs.parameters.fsx_id}}"
+            depends: "get-fsx-id.Succeeded"
+            template: create-fsx-id-secret
+          - name: tag-pvc
+            arguments:
+              parameters:
+                - name: namespace
+                  value: "{{workflow.parameters.namespace}}"
+                - name: pvc-name
+                  value: "{{workflow.parameters.pvc-name}}"
+                - name: fsx-id
+                  value: "{{tasks.get-fsx-id.outputs.parameters.fsx_id}}"
+            template: tag-pvc
+            depends: get-fsx-id.Succeeded
+      outputs:
+        parameters:
+          - name: "pvc-status"
+            valueFrom:
+              parameter: "{{tasks.create-pvc.outputs.parameters.status}}"
+            globalName: pvc-status
+    - name: create-pvc
+      inputs:
+        parameters:
+          - name: pvc-name
+          - name: namespace
+          - name: pvc-size
+      nodeSelector:
+        karpenter.sh/provisioner-name: fsx-provisioner
+        kubernetes.io/arch: amd64
+        karpenter.sh/capacity-type: on-demand
+      timeout: 600s
+      resource:
+        action: create
+        setOwnerReference: true
+        successCondition: "status.phase == Bound"
+        failureCondition: "status.phase == Failed"
+        manifest: |               #put your kubernetes spec here
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: '{{inputs.parameters.pvc-name}}'
+            namespace: '{{inputs.parameters.namespace}}'
+          spec:
+            accessModes: [ "ReadWriteMany" ]
+            resources:
+              requests:
+                storage: '{{inputs.parameters.pvc-size}}'
+            storageClassName: lustre-persistent1-sc
+      outputs:
+        parameters:
+          - name: status
+            valueFrom:
+              jsonPath: '{.status.phase}'
+          - name: pv-name
+            valueFrom:
+              jsonPath: '{.spec.volumeName}'
+    - name: get-fsx-id
+      inputs:
+        parameters:
+          - name: pv-name
+          - name: namespace
+      nodeSelector:
+        karpenter.sh/provisioner-name: fsx-provisioner
+        kubernetes.io/arch: amd64
+        karpenter.sh/capacity-type: on-demand
+      resource:
+        action: get
+        manifest: |
+          apiVersion: v1
+          kind: PersistentVolume
+          metadata:
+            name: "{{inputs.parameters.pv-name}}"
+            namespace: "{{inputs.parameters.namespace}}"
+      outputs:
+        parameters:
+          - name: fsx_id
+            valueFrom:
+              jsonPath: '{.spec.csi.volumeHandle}'
+    - name: create-fsx-id-secret
+      inputs:
+        parameters:
+          - name: pvc-name
+          - name: fsx-id
+      nodeSelector:
+        karpenter.sh/provisioner-name: fsx-provisioner
+        kubernetes.io/arch: amd64
+        karpenter.sh/capacity-type: on-demand
+      resource:
+        action: create
+        setOwnerReference: true
+        manifest: |
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: {{inputs.parameters.pvc-name}}
+          type: Opaque
+          stringData:
+            fsx-id: {{inputs.parameters.fsx-id}}
+    - name: tag-pvc
+      podSpecPatch: '{"serviceAccountName": "argowf-sa"}'
+      nodeSelector:
+        karpenter.sh/provisioner-name: fsx-provisioner
+        kubernetes.io/arch: amd64
+        karpenter.sh/capacity-type: on-demand
+      inputs:
+        parameters:
+          - name: namespace
+          - name: pvc-name
+          - name: fsx-id
+      container:
+        image: demisto/boto3py3:1.0.0.64080
+        command:
+          - python
+          - '-c'
+        args:
+          - |
+            import boto3
+            import os
+
+            region=os.getenv("AWS_DEFAULT_REGION")
+
+            sts_client = boto3.client("sts")
+            account_id = sts_client.get_caller_identity()["Account"]
+
+            fsx_client = boto3.client('fsx')
+
+            current_tags = fsx_client.list_tags_for_resource(
+                ResourceARN=f'arn:aws:fsx:{region}:{account_id}:file-system/{{inputs.parameters.fsx-id}}',
+            )["Tags"]
+            print(current_tags)
+            additonal_tags = [
+                {
+                    'Key': 'namespace',
+                    'Value': '{{inputs.parameters.namespace}}'
+                },
+                {
+                    'Key': 'Name',
+                    'Value': "{{inputs.parameters.pvc-name}}"
+                }]
+            current_tags.extend(additonal_tags)
+
+            response = fsx_client.tag_resource(
+                ResourceARN=f'arn:aws:fsx:{region}:{account_id}:file-system/{{inputs.parameters.fsx-id}}',
+                Tags=current_tags
+            )

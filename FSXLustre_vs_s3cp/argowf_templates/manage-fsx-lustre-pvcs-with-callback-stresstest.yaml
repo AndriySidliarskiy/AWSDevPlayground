@@ -1,0 +1,177 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: manage-fsx-lustre-pvcs-with-callback-stresstest
+spec:
+  serviceAccountName: argowf-sa
+  entrypoint: workload
+  arguments:
+    parameters:
+      - name: pvc-name
+      - name: pvc-size
+      - name: namespace
+      - name: action
+  workflowMetadata:
+    labels:
+      pvc-name: "{{workflow.parameters.pvc-name}}"
+      action: "{{workflow.parameters.action}}"
+  templates:
+    - name: workload
+      inputs:
+        parameters:
+          - name: pvc-name
+            value: "{{workflow.parameters.pvc-name}}"
+          - name: pvc-size
+            value: "{{workflow.parameters.pvc-size}}"
+          - name: namespace
+            value: "{{workflow.parameters.namespace}}"
+          - name: step-function-token
+            value: "{{workflow.parameters.step-function-token}}"
+          - name: invoke-by-sf
+            value: "{{workflow.parameters.invoke-by-sf}}"
+          - name: action
+            value: "{{workflow.parameters.action}}"
+          - name: aws-region
+            value: "{{workflow.parameters.aws-region}}"
+      dag:
+        tasks:
+          - name: check-pvc-exists
+            arguments:
+              parameters:
+                - name: pvc-name
+                  value: "{{inputs.parameters.pvc-name}}"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+                - name: k8s-resource
+                  value: "pvc"
+            template: check-pvc-exists
+          - name: create-pvc
+            arguments:
+              parameters:
+                - name: pvc-name
+                  value: "{{inputs.parameters.pvc-name}}"
+                - name: pvc-size
+                  value: "{{inputs.parameters.pvc-size}}"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+                - name: action
+                  value: "{{inputs.parameters.action}}"
+            template: create-pvc
+            when: "{{inputs.parameters.action}} == create && {{tasks.check-pvc-exists.outputs.result}} == 'NotExist'"
+            depends: "check-pvc-exists.Succeeded"
+          - name: wait-on-pvc-availability
+            arguments:
+              parameters:
+                - name: pvc-name
+                  value: "{{inputs.parameters.pvc-name}}"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+            depends: "create-pvc.Failed"
+            when: "{{inputs.parameters.action}} == create"
+            template: wait-on-pvc-availability
+          - name: delete-pvc
+            arguments:
+              parameters:
+                - name: pvc-name
+                  value: "{{inputs.parameters.pvc-name}}"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+            template: delete-pvc
+            depends: "check-pvc-exists.Succeeded"
+            when: "{{inputs.parameters.action}} == delete && {{tasks.check-pvc-exists.outputs.result}} == 'Exist'"
+    - name: check-pvc-exists
+      inputs:
+        parameters:
+          - name: pvc-name
+          - name: namespace
+          - name: k8s-resource
+      nodeSelector:
+        karpenter.sh/provisioner-name: fsx-provisioner
+        kubernetes.io/arch: amd64
+        karpenter.sh/capacity-type: on-demand
+      script:
+        image: 864655780015.dkr.ecr.eu-west-1.amazonaws.com/kubectl:latest
+        command: [bash]
+        source: |
+          result=$(kubectl get {{inputs.parameters.k8s-resource}} {{inputs.parameters.pvc-name}} -n {{inputs.parameters.namespace}} 2>&1); if [ $? -eq 0 ]; then echo "Exist"; else echo "NotExist"; fi
+    - name: create-pvc
+      inputs:
+        parameters:
+          - name: pvc-name
+          - name: namespace
+          - name: pvc-size
+          - name: action
+      nodeSelector:
+        karpenter.sh/provisioner-name: fsx-provisioner
+        kubernetes.io/arch: amd64
+        karpenter.sh/capacity-type: on-demand
+      resource:
+        action: create
+        successCondition: status.phase == Succeeded
+        failureCondition: status.phase in (Failed, Error)
+        manifest: |
+          apiVersion: argoproj.io/v1alpha1
+          kind: Workflow
+          metadata:
+            name: "{{inputs.parameters.pvc-name}}-create"
+            labels:
+              pvc-name: "{{inputs.parameters.pvc-name}}"
+              action: "{{inputs.parameters.action}}"
+          spec:
+            arguments:
+              parameters:
+                - name: pvc-name
+                  value: "{{inputs.parameters.pvc-name}}"
+                - name: pvc-size
+                  value: "{{inputs.parameters.pvc-size}}"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+            entrypoint: workload
+            workflowTemplateRef:
+              name: create-fsx-pvc-stresstest
+              clusterScope: true
+      outputs:
+        parameters:
+          - name: pvc-status
+            valueFrom:
+              jsonPath: '{.status.nodes.*.outputs.parameters[?(@.globalName=="pvc-status")].value}' 
+            globalName: pvc-status       
+    - name: wait-on-pvc-availability
+      inputs:
+        parameters:
+          - name: pvc-name
+          - name: namespace
+      nodeSelector:
+        karpenter.sh/provisioner-name: fsx-provisioner
+        kubernetes.io/arch: amd64
+        karpenter.sh/capacity-type: on-demand
+      resource:
+        action: get
+        successCondition: "status.phase == Succeeded"
+        failureCondition: status.phase in (Failed, Error)
+        manifest: |
+          apiVersion: argoproj.io/v1alpha1
+          kind: Workflow
+          metadata:
+            name: "{{inputs.parameters.pvc-name}}-create"
+            namespace: "{{inputs.parameters.namespace}}"
+      outputs:
+        parameters:
+          - name: pvc-status
+            valueFrom:
+              jsonPath: '{.status.nodes.*.outputs.parameters[?(@.globalName=="pvc-status")].value}'
+            globalName: pvc-status  
+    - name: delete-pvc
+      inputs:
+        parameters:
+          - name: pvc-name
+          - name: namespace
+      nodeSelector:
+        karpenter.sh/provisioner-name: fsx-provisioner
+        kubernetes.io/arch: amd64
+        karpenter.sh/capacity-type: on-demand
+      resource:
+        action: delete
+        flags: [
+          "workflow", "--selector", "pvc-name={{inputs.parameters.pvc-name}},action!=delete",  "--namespace", "{{inputs.parameters.namespace}}"
+        ]

@@ -1,0 +1,870 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: stresstest
+  namespace: argowf
+spec:
+  # ttlStrategy:
+  #   secondsAfterSuccess: 60     # Time to live after workflow is successful
+  #   secondsAfterFailure: 180
+  serviceAccountName: argowf-sa
+  entrypoint: workload
+  arguments:
+    parameters:
+      - name: task_id
+      - name: create_fsx_associations
+        value: true
+        enum:
+          -   true
+          -   false
+      - name: pvc_name
+      - name: pvc_size
+        value: 1200Gi
+        enum:
+          -   1200Gi
+          -   2400Gi
+          -   4800Gi
+          -   9600Gi
+      - name: namespace
+      - name: instance_type
+        value: c5.xlarge
+        enum:
+          -   c5.xlarge
+          -   c5.9xlarge
+          -   c5.24xlarge
+      - name: action_file_size
+        value: 5000m
+        enum:
+          -   5000m
+          -   10000m
+          -   25000m
+          -   50000m
+          -   100000m
+          -   200000m
+          -   500000m
+      - name: download_bucket_name
+      - name: download_file_name
+      - name: multipart_chunksize
+        value: 8
+        enum:
+          -   8
+          -   16
+          -   40
+          -   100
+      - name: multipart_threshold
+        value: 16
+        enum:
+          -   16
+          -   32
+          -   80
+          -   200
+      - name: upload_bucket_name
+  templates:
+  - name: workload
+    inputs:
+      parameters:
+      - name: task_id
+        value: "{{workflow.parameters.task_id}}"
+      - name: create_pvc
+        value: "{{workflow.parameters.create_pvc}}"
+      - name: create_fsx_associations
+        value: "{{workflow.parameters.create_fsx_associations}}"
+      - name: settings
+        value: |
+          {
+            "s3cp": {
+              "mount_path": "/s3cp",
+              "local_input_folder": "s3cp-input",
+              "local_output_folder": "s3cp-output"
+            },
+            "fsx": {
+              "mount_path": "/fsx"
+            }
+           }
+      - name: config
+        value: |
+          {
+            "download": {
+              "instance_type": "{{workflow.parameters.instance_type}}",
+              "s3_file_name": "{{workflow.parameters.download_file_name}}",
+              "bucket_name": "{{workflow.parameters.download_bucket_name}}"
+            },
+            "action": {
+              "local_file_folder": "output",
+              "local_file_name": "action-{{inputs.parameters.task_id}}-{{workflow.name}}.txt",
+              "local_file_size": "{{workflow.parameters.action_file_size}}"
+            },
+            "upload": {
+              "instance_type": "{{workflow.parameters.instance_type}}",
+              "s3_destination_path": "action-{{inputs.parameters.task_id}}-{{workflow.name}}.txt",
+              "bucket_name": "{{workflow.parameters.upload_bucket_name}}"
+            }  
+          }
+      - name: pvc
+        value: |
+          { 
+            "pvc": {
+              "name": "{{workflow.parameters.pvc_name}}",
+              "size": "{{workflow.parameters.pvc_size}}",
+              "namespace": "{{workflow.parameters.namespace}}"
+            }   
+          }
+    dag:
+      tasks:
+      - name: create-pvc
+        templateRef:
+          name: manage-fsx-lustre-pvcs-with-callback-stresstest
+          template: workload
+          clusterScope: true
+        arguments:
+          parameters:
+          - name: step-function-token
+            value: "example token"
+          - name: invoke-by-sf
+            value: "false"
+          - name: aws-region
+            value: "eu-west-1"
+          - name: action
+            value: "create"
+          - name: pvc-name
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.name')}}"
+          - name: pvc-size
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.size')}}"
+          - name: namespace
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.namespace')}}"
+      - name: get-fsx-id
+        template: get-fsx-id
+        arguments:
+          parameters:
+            - name: pvc-name
+              value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.name')}}"
+            - name: namespace
+              value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.namespace')}}"
+        depends: "create-pvc"
+      - name: s3cp-download-perfomance
+        arguments:
+          parameters:
+          - name: action
+            value: "download"
+          - name:  instance_type
+            value: "{{=jsonpath(inputs.parameters.config, '$.download.instance_type')}}"
+          - name: bucket_name
+            value: "{{=jsonpath(inputs.parameters.config, '$.download.bucket_name')}}"
+          - name: file_name
+            value: "{{=jsonpath(inputs.parameters.config, '$.download.s3_file_name')}}"
+          - name: destination_path
+            value: "{{=jsonpath(inputs.parameters.settings, '$.s3cp.mount_path')}}/{{=jsonpath(inputs.parameters.settings, '$.s3cp.local_input_folder')}}/{{=jsonpath(inputs.parameters.config, '$.download.s3_file_name')}}"
+          - name: multipart_chunksize
+            value: "{{workflow.parameters.multipart_chunksize}}"
+          - name: multipart_threshold
+            value: "{{workflow.parameters.multipart_threshold}}"
+          - name: mount_path
+            value: "{{=jsonpath(inputs.parameters.settings, '$.s3cp.mount_path')}}"
+          - name: artifacts_bucket_name
+            value: "{{workflow.parameters.upload_bucket_name}}"
+          - name: pvc_name
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.name')}}"
+          - name: task_id
+            value: "{{inputs.parameters.task_id}}"
+        depends: "get-fsx-id.Succeeded"
+        template: s3cp-pefomance
+      - name: s3cp-download-md5-validation
+        arguments:
+          parameters:
+          - name: bucket_name
+            value: "{{=jsonpath(inputs.parameters.config, '$.download.bucket_name')}}"
+          - name: s3_file_path
+            value: "{{=jsonpath(inputs.parameters.config, '$.download.s3_file_name')}}"
+          - name: local_file_path
+            value: "{{=jsonpath(inputs.parameters.settings, '$.s3cp.mount_path')}}/{{=jsonpath(inputs.parameters.settings, '$.s3cp.local_input_folder')}}/{{=jsonpath(inputs.parameters.config, '$.download.s3_file_name')}}"
+          - name: multipart_chunksize
+            value: "{{workflow.parameters.multipart_chunksize}}"
+          - name: mount_path
+            value: "{{=jsonpath(inputs.parameters.settings, '$.s3cp.mount_path')}}"
+          - name: pvc_name
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.name')}}"
+          - name: task_id
+            value: "{{inputs.parameters.task_id}}"
+        depends: "s3cp-download-perfomance"
+        template: check-file-present-in-s3
+      - name: s3cp-action-result-simulation
+        arguments:
+          parameters:
+          - name: file_path
+            value: "{{=jsonpath(inputs.parameters.settings, '$.s3cp.local_output_folder')}}"
+          - name: file_name
+            value: "{{=jsonpath(inputs.parameters.config, '$.action.local_file_name')}}"
+          - name: file_size
+            value: "{{=jsonpath(inputs.parameters.config, '$.action.local_file_size')}}"
+          - name: mount_path
+            value: "{{=jsonpath(inputs.parameters.settings, '$.s3cp.mount_path')}}"
+          - name: pvc_name
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.name')}}"
+        depends: "s3cp-download-perfomance"
+        template: action-result-simulation
+      - name: s3cp-upload-perfomance
+        arguments:
+          parameters:
+          - name: action
+            value: "upload"
+          - name:  instance_type
+            value: "{{=jsonpath(inputs.parameters.config, '$.upload.instance_type')}}"
+          - name: bucket_name
+            value: "{{=jsonpath(inputs.parameters.config, '$.upload.bucket_name')}}"
+          - name: file_name
+            value: "{{tasks.s3cp-action-result-simulation.outputs.parameters.file_path}}"
+          - name: destination_path
+            value: "s3cp/{{=jsonpath(inputs.parameters.config, '$.upload.instance_type')}}/{{workflow.creationTimestamp}}/{{inputs.parameters.task_id}}/{{=jsonpath(inputs.parameters.config, '$.upload.s3_destination_path')}}"
+          - name: multipart_chunksize
+            value: "{{workflow.parameters.multipart_chunksize}}"
+          - name: multipart_threshold
+            value: "{{workflow.parameters.multipart_threshold}}"
+          - name: mount_path
+            value: "{{=jsonpath(inputs.parameters.settings, '$.s3cp.mount_path')}}"
+          - name: artifacts_bucket_name
+            value: "{{workflow.parameters.upload_bucket_name}}"
+          - name: pvc_name
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.name')}}"
+          - name: task_id
+            value: "{{inputs.parameters.task_id}}"
+        depends: "s3cp-action-result-simulation"
+        template: s3cp-pefomance
+      - name: s3cp-upload-md5-validation
+        arguments:
+          parameters:
+          - name: bucket_name
+            value: "{{=jsonpath(inputs.parameters.config, '$.upload.bucket_name')}}"
+          - name: s3_file_path
+            value: "s3cp/{{=jsonpath(inputs.parameters.config, '$.upload.instance_type')}}/{{workflow.creationTimestamp}}/{{inputs.parameters.task_id}}/{{=jsonpath(inputs.parameters.config, '$.upload.s3_destination_path')}}"
+          - name: local_file_path
+            value: "{{tasks.s3cp-action-result-simulation.outputs.parameters.file_path}}"
+          - name: multipart_chunksize
+            value: "{{workflow.parameters.multipart_chunksize}}"
+          - name: mount_path
+            value: "{{=jsonpath(inputs.parameters.settings, '$.s3cp.mount_path')}}"
+          - name: pvc_name
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.name')}}"
+        depends: "s3cp-upload-perfomance"
+        template: check-file-present-in-s3
+      - name: fsx-lustre-create-associations
+        arguments:
+          parameters:
+          - name: filesystem_id
+            value: "{{tasks.get-fsx-id.outputs.result}}"
+          - name: download_bucket_name
+            value: "{{workflow.parameters.download_bucket_name}}"
+          - name: upload_bucket_name
+            value: "{{workflow.parameters.upload_bucket_name}}"
+          - name: mount_path
+            value: "{{=jsonpath(inputs.parameters.settings, '$.fsx.mount_path')}}"
+          - name: pvc_name
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.name')}}"
+        when: "{{inputs.parameters.create_fsx_associations}} == true"
+        depends: "get-fsx-id.Succeeded"
+        template: fsx-lustre-create-associations
+      - name: wait-fsx-dra-status
+        arguments:
+          parameters:
+          - name: pvc_name
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.name')}}"
+        depends: "fsx-lustre-create-associations.Succeeded || fsx-lustre-create-associations.Skipped"
+        template: wait-fsx-dra-status
+      - name: fsx-download-md5-validation
+        arguments:
+          parameters:
+          - name: bucket_name
+            value: "{{workflow.parameters.download_bucket_name}}"
+          - name: s3_file_path
+            value: "{{=jsonpath(inputs.parameters.config, '$.download.s3_file_name')}}"
+          - name: local_file_path
+            value: "{{=jsonpath(inputs.parameters.settings, '$.fsx.mount_path')}}/input/{{=jsonpath(inputs.parameters.config, '$.download.s3_file_name')}}"
+          - name: multipart_chunksize
+            value: "{{workflow.parameters.multipart_chunksize}}"
+          - name: mount_path
+            value: "{{=jsonpath(inputs.parameters.settings, '$.fsx.mount_path')}}"
+          - name: pvc_name
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.name')}}"
+        depends: "wait-fsx-dra-status.Succeeded"
+        template: check-file-present-in-s3
+      - name: fsx-action-result-simulation
+        arguments:
+          parameters:
+          - name: file_path
+            value: "{{=jsonpath(inputs.parameters.config, '$.action.local_file_folder')}}"
+          - name: file_name
+            value: "{{=jsonpath(inputs.parameters.config, '$.action.local_file_name')}}"
+          - name: file_size
+            value: "{{=jsonpath(inputs.parameters.config, '$.action.local_file_size')}}"
+          - name: mount_path
+            value: "{{=jsonpath(inputs.parameters.settings, '$.fsx.mount_path')}}"
+          - name: pvc_name
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.name')}}"
+        depends: "wait-fsx-dra-status.Succeeded"
+        template: action-result-simulation
+      - name: fsx-upload-perfomance
+        arguments:
+          parameters:
+          - name: local_file_path
+            value: "{{tasks.fsx-action-result-simulation.outputs.parameters.file_path}}"
+          - name: mount_path
+            value: "{{=jsonpath(inputs.parameters.settings, '$.fsx.mount_path')}}"
+          - name: pvc_name
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.name')}}"
+        depends: "fsx-action-result-simulation.Succeeded"
+        template: fsx-perfomance
+      - name: fsx-upload-md5-validation
+        arguments:
+          parameters:
+          - name: bucket_name
+            value: "{{workflow.parameters.upload_bucket_name}}"
+          - name: s3_file_path
+            value: "fsx/{{=jsonpath(inputs.parameters.config, '$.upload.s3_destination_path')}}"
+          - name: local_file_path
+            value: "{{tasks.fsx-action-result-simulation.outputs.parameters.file_path}}"
+          - name: multipart_chunksize
+            value: "40"
+          - name: mount_path
+            value: "{{=jsonpath(inputs.parameters.settings, '$.fsx.mount_path')}}"
+          - name: pvc_name
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.name')}}"
+        depends: "fsx-upload-perfomance.Succeeded"
+        template: check-file-present-in-s3
+      - name: report
+        arguments:  
+          parameters:   
+          - name: pvc_name
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.name')}}"
+          - name: time_intervals
+            value: |
+              [
+               {
+                "task": "s3cp-download-perfomance",
+                "start_time_str": "{{tasks.s3cp-download-perfomance.startedAt}}",
+                "end_time_str": "{{tasks.s3cp-download-perfomance.finishedAt}}"
+                }, 
+                {
+                "task": "s3cp-upload-perfomance",
+                "start_time_str": "{{tasks.s3cp-upload-perfomance.startedAt}}",
+                "end_time_str": "{{tasks.s3cp-upload-perfomance.finishedAt}}"
+                },
+                {
+                "task": "wait-fsx-dra-status",
+                "start_time_str": "{{tasks.wait-fsx-dra-status.startedAt}}",
+                "end_time_str": "{{tasks.wait-fsx-dra-status.finishedAt}}"
+                },
+                {
+                "task": "fsx-upload-perfomance",
+                "start_time_str": "{{tasks.fsx-upload-perfomance.startedAt}}",
+                "end_time_str": "{{tasks.fsx-upload-perfomance.finishedAt}}"
+                }
+              ]
+          - name: config
+            value: "{{inputs.parameters.config}}"
+          - name: mount_path
+            value: "{{=jsonpath(inputs.parameters.settings, '$.s3cp.mount_path')}}"
+          - name: artifacts_bucket_name
+            value: "{{workflow.parameters.upload_bucket_name}}"
+          - name: task_id
+            value: "{{inputs.parameters.task_id}}"
+        depends: "fsx-upload-md5-validation.Succeeded && s3cp-upload-md5-validation.Succeeded"
+        template: report
+      - name: delete-pvc
+        templateRef:
+          name: manage-fsx-lustre-pvcs-with-callback-stresstest
+          template: workload
+          clusterScope: true
+        arguments:
+          parameters:
+          - name: action
+            value: "delete"
+          - name: pvc-name
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.name')}}"
+          - name: pvc-size
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.size')}}"
+          - name: namespace
+            value: "{{=jsonpath(inputs.parameters.pvc, '$.pvc.namespace')}}"
+        depends: "report.Succeeded"
+  - name: get-fsx-id
+    inputs:
+      parameters:
+        - name: pvc-name
+        - name: namespace
+    nodeSelector:
+      karpenter.sh/provisioner-name: fsx-provisioner
+      kubernetes.io/arch: amd64
+      karpenter.sh/capacity-type: on-demand
+    script:
+      image: bitnami/kubectl:latest
+      command: [bash]
+      source: |
+        kubectl get secret {{inputs.parameters.pvc-name}} -n {{inputs.parameters.namespace}} -o jsonpath='{.data.fsx-id}' | base64 --decode
+  - name: s3cp-pefomance
+    nodeSelector:
+      karpenter.sh/provisioner-name: fsx-provisioner
+      kubernetes.io/arch: amd64
+      karpenter.sh/capacity-type: on-demand
+      # node.kubernetes.io/instance-type: "{{inputs.parameters.instance_type}}"
+    inputs:
+      parameters:
+        - name: bucket_name
+        - name: file_name
+        - name: destination_path
+        - name: mount_path
+        - name: pvc_name
+        - name: action
+        - name: instance_type
+        - name: multipart_chunksize
+        - name: multipart_threshold
+        - name: artifacts_bucket_name
+        - name: task_id
+    volumes:
+      - name: "test"
+        persistentVolumeClaim:
+          claimName: "{{inputs.parameters.pvc_name}}"
+    script:
+      image: demisto/boto3py3:1.0.0.64080
+      command: ["/bin/sh","-c"]
+      args: [apk add linux-headers && apk add build-base python3-dev && pip install psutil && python /argo/staging/script]
+      resources:
+        requests:
+          memory: "5120Mi"
+          cpu: "3072m"
+        limits:
+          memory: "5120Mi"
+          cpu: "3072m"
+      volumeMounts:
+        - name: "test"
+          mountPath: "{{inputs.parameters.mount_path}}"
+      source: |
+        import boto3
+        import os
+        import sys
+        import subprocess
+        import psutil
+        import time
+        from boto3.s3.transfer import TransferConfig
+
+
+        class ProgressPercentage(object):
+            def __init__(self, bucket, key):
+                self._bucket = bucket
+                self._key = key
+                self._size = None
+                self._seen_so_far = 0
+                self._start_time = time.time()
+
+            def __call__(self, bytes_amount):
+                self._seen_so_far += bytes_amount
+                if self._size is None:
+                    self._size = self._get_file_size()
+                    if self._size is None:
+                        print(f"Unable to retrieve file size for {self._key}")
+                        return
+
+                percentage = (self._seen_so_far / self._size) * 100
+                elapsed_time = time.time() - self._start_time
+                speed = self._seen_so_far / elapsed_time / 1000000  # bytes per second
+                progress_message = "\rDownloading {}/{}  {:.2f}% Complete  Speed: {:.2f} MB/s".format(
+                    self._bucket, self._key, percentage, speed
+                )
+                print(progress_message, end='', flush=True, file=sys.stdout)
+
+            def _get_file_size(self):
+                s3_client = boto3.client('s3')
+                try:
+                    response = s3_client.head_object(Bucket=self._bucket, Key=self._key)
+                    return float(response['ContentLength'])
+                except Exception as e:
+                    print(f"Failed to retrieve file size: {e}", file=sys.stderr)
+                    return None
+
+
+        def s3_action(bucket_name, s3_object_key, destination_path, action):
+            # Create a Boto3 client for S3
+            s3_client = boto3.client('s3')
+
+            config = TransferConfig(
+                multipart_threshold={{inputs.parameters.multipart_threshold}} * 1024 * 1024,  # 200 MB
+                multipart_chunksize={{inputs.parameters.multipart_chunksize}} * 1024 * 1024,  # 100 MB
+                max_concurrency=100
+            )
+
+            process = psutil.Process()
+            cpu_percent_max = 0.0
+            memory_percent_max = 0.0
+
+            cpu_percent_max = max(cpu_percent_max, process.cpu_percent())
+            memory_percent_max = max(memory_percent_max, process.memory_percent())
+
+            if action == 'download':
+                os.makedirs(os.path.dirname(destination_path), exist_ok=True)
+                progress = ProgressPercentage(bucket_name, s3_object_key)
+
+                # Check if the destination directory exists
+                if not os.path.exists(os.path.dirname(destination_path)):
+                    print(f"\nError: Destination directory '{os.path.dirname(destination_path)}' does not exist.",
+                          file=sys.stderr)
+                    return False
+
+                # Download the file from S3 using the transfer configuration
+                try:
+                    start_time = time.time()
+                    s3_client.download_file(bucket_name, s3_object_key, destination_path, Config=config, Callback=progress)
+                    end_time = time.time()
+                    elapsed_time = int(time.time() - start_time)
+                    if os.path.exists(destination_path):
+                        print(f"\nFile '{s3_object_key}' successfully copied to '{destination_path}'", file=sys.stdout)
+                        print(f"Maximum CPU Usage: {cpu_percent_max}%", file=sys.stdout)
+                        print(f"Maximum Memory Usage: {memory_percent_max}%", file=sys.stdout)
+                        print(f"Total Time: {elapsed_time:.2f} seconds", file=sys.stdout)
+                        return True
+                    else:
+                        print(f"\nFailed to copy file '{s3_object_key}' to '{destination_path}'", file=sys.stderr)
+                        return False
+                except FileNotFoundError as e:
+                    print(f"\nError: {e}. Make sure the source file exists in S3.", file=sys.stderr)
+                    return False
+
+            elif action == 'upload':
+                s3_client.upload_file(s3_object_key, bucket_name, destination_path, Config=config)
+                print(f"\nFile '{s3_object_key}' successfully copied to '{destination_path}'", file=sys.stdout)
+
+            else:
+                print("Invalid action. Please specify 'download' or 'upload'.", file=sys.stderr)
+                return False
+
+
+        bucket_name = '{{inputs.parameters.bucket_name}}'
+        s3_object_key = '{{inputs.parameters.file_name}}'
+        destination_path = '{{inputs.parameters.destination_path}}'
+        action = '{{inputs.parameters.action}}'
+
+        # Open a file to write the output
+        with open("{{inputs.parameters.mount_path}}/s3cp-result-{{inputs.parameters.task_id}}-{{workflow.creationTimestamp}}.txt", "w") as file:
+            # Redirect stdout and stderr to the file
+            sys.stdout = file
+            sys.stderr = file
+
+            s3_action(bucket_name, s3_object_key, destination_path, action)
+
+        # Reset stdout and stderr to their default values
+        sys.stdout = sys.__stdout__
+        sys.stderr = sys.__stderr__
+    outputs:
+      artifacts:
+        - name: result
+          path: "{{inputs.parameters.mount_path}}/s3cp-result-{{inputs.parameters.task_id}}-{{workflow.creationTimestamp}}.txt"
+          s3:
+            endpoint: s3.amazonaws.com
+            bucket: "{{inputs.parameters.artifacts_bucket_name}}"
+            key: s3cp/{{inputs.parameters.instance_type}}/{{workflow.creationTimestamp}}/{{inputs.parameters.task_id}}/{{tasks.name}}.txt
+            useSDKCreds: true
+  - name: fsx-lustre-create-associations
+    inputs:
+      parameters:
+        # - name: fsx_associations
+        - name: filesystem_id
+        - name: download_bucket_name
+        - name: upload_bucket_name
+        - name: mount_path
+        - name: pvc_name
+    nodeSelector:
+      karpenter.sh/provisioner-name: fsx-provisioner
+      kubernetes.io/arch: amd64
+      karpenter.sh/capacity-type: on-demand
+    resource:
+      action: create
+      # successCondition: status.phase == Succeeded
+      # failureCondition: status.phase in (Failed, Error)
+      manifest: |
+        apiVersion: argoproj.io/v1alpha1
+        kind: Workflow
+        metadata:
+          name: "fsx-dra-{{inputs.parameters.pvc_name}}"
+          namespace: argowf
+        spec: 
+          serviceAccountName: argowf-sa
+          entrypoint: workload
+          arguments:
+            parameters:
+              - name: fsx_associations
+                value: |
+                  [
+                    {
+                          "filesystem_id":"{{inputs.parameters.filesystem_id}}",
+                          "data_repository_path":"s3://{{inputs.parameters.download_bucket_name}}",
+                          "import_metadata":"True",
+                          "file_system_path":"/input",
+                          "import_policy":["CHANGED","DELETED","NEW"],
+                          "export_policy":[]
+                      },
+                      {
+                          "filesystem_id":"{{inputs.parameters.filesystem_id}}",
+                          "data_repository_path":"s3://{{inputs.parameters.upload_bucket_name}}/fsx",
+                          "import_metadata":"False",
+                          "file_system_path":"/output",
+                          "import_policy":[],
+                          "export_policy":["CHANGED","DELETED","NEW"]
+                      }
+                  ]
+              - name: mount_path
+                value: "{{inputs.parameters.mount_path}}"
+              - name: pvc_name      
+                value: "{{inputs.parameters.pvc_name}}"
+          workflowTemplateRef:
+            name: fsx-data-repository-associations
+  - name: wait-fsx-dra-status
+    retryStrategy:
+      limit: 2
+      retryPolicy: "Always"
+      backoff:
+        duration: "1m"
+        factor: "1"
+        maxDuration: "2m" 
+    inputs:
+      parameters:
+        - name: pvc_name
+    resource:
+      action: get
+      successCondition: status.phase == Succeeded
+      failureCondition: status.phase in (Failed, Error)
+      manifest: |
+        apiVersion: argoproj.io/v1alpha1
+        kind: Workflow
+        metadata:
+          name: "fsx-dra-{{inputs.parameters.pvc_name}}"
+  - name: action-result-simulation
+    nodeSelector:
+      karpenter.sh/provisioner-name: fsx-provisioner
+      kubernetes.io/arch: amd64
+      karpenter.sh/capacity-type: on-demand
+    inputs:
+      parameters:
+        - name: file_path
+        - name: file_name
+        - name: file_size
+        - name: mount_path
+        - name: pvc_name
+    volumes:
+      - name: "test"
+        persistentVolumeClaim:
+          claimName: "{{inputs.parameters.pvc_name}}"
+    script:
+      image: amazon/aws-cli:latest
+      command: ["sh"]
+      resources:
+        requests:
+          memory: "512Mi"
+          cpu: "512m"
+        limits:
+          memory: "1024Mi"
+          cpu: "512m"
+      volumeMounts:
+        - name: "test"
+          mountPath: "{{inputs.parameters.mount_path}}"
+      source: |
+        mkdir -p {{inputs.parameters.mount_path}}/{{inputs.parameters.file_path}}/
+        truncate -s {{inputs.parameters.file_size}} {{inputs.parameters.mount_path}}/{{inputs.parameters.file_path}}/{{inputs.parameters.file_name}}
+        cd {{inputs.parameters.mount_path}}/{{inputs.parameters.file_path}}/ && ls -la
+        echo File {{inputs.parameters.mount_path}}/{{inputs.parameters.file_path}}/{{inputs.parameters.file_name}} with {{inputs.parameters.file_size}} size was created
+    outputs:
+      parameters:
+        - name: file_path
+          value: "{{inputs.parameters.mount_path}}/{{inputs.parameters.file_path}}/{{inputs.parameters.file_name}}"
+  - name: check-file-present-in-s3
+    nodeSelector:
+      karpenter.sh/provisioner-name: fsx-provisioner
+      kubernetes.io/arch: amd64
+      karpenter.sh/capacity-type: on-demand
+    inputs:
+      parameters:
+        - name: bucket_name
+        - name: s3_file_path
+        - name: local_file_path
+        - name: mount_path
+        - name: pvc_name
+        - name: multipart_chunksize
+    volumes:
+      - name: "test"
+        persistentVolumeClaim:
+          claimName: "{{inputs.parameters.pvc_name}}"
+    script:
+      image: demisto/boto3py3:1.0.0.64080
+      command: ["python"]
+      resources:
+        limits:
+          cpu: 4096m
+          memory: 8192Mi
+        requests:
+          cpu: 2048m
+          memory: 4096Mi
+      volumeMounts:
+        - name: "test"
+          mountPath: "{{inputs.parameters.mount_path}}"
+      source: |
+        import boto3
+        import hashlib
+
+        def calculate_md5(file_path, chunk_size={{inputs.parameters.multipart_chunksize}} * 1024 * 1024):
+            md5s = []
+            with open(file_path, 'rb') as f:
+                for data in iter(lambda: f.read(chunk_size), b''):
+                    md5s.append(hashlib.md5(data).digest())
+            m = hashlib.md5(b"".join(md5s))
+            return '{}-{}'.format(m.hexdigest(), len(md5s))
+
+        def etag_compare(file_path, etag):
+            et = etag[1:-1] # strip quotes
+            if '-' in et and et == calculate_md5(file_path):
+                print(f"Calculated MD5 hash identical")
+                return True
+            else:
+              print(f"Calculated MD5 hash not identical")
+              raise Exception("MD5 hash comparison failed")
+
+        def check_file_in_s3(bucket_name, file_key, local_file_path):
+            s3_client = boto3.client('s3')
+
+            try:
+                response = s3_client.get_object(Bucket=bucket_name, Key=file_key)
+                etag = (response['ETag'])
+                print(f"ETag for file in s3 '{file_key}': {etag}")
+
+                # Calculate MD5 hash of the local file
+                calculated_md5 = calculate_md5(local_file_path)
+                print(f"Calculated MD5 hash for local file {local_file_path}: {calculated_md5}")
+
+                validation = etag_compare(local_file_path,etag)
+                # return validation
+
+            except s3_client.exceptions.NoSuchKey:
+                print(f"File '{file_key}' does not exist in bucket '{bucket_name}'")
+                raise Exception("NoSuchKey exception occurred")
+
+        # Usage example
+        bucket_name = "{{inputs.parameters.bucket_name}}"
+        file_key = "{{inputs.parameters.s3_file_path}}"
+        local_file_path = "{{inputs.parameters.local_file_path}}"
+
+        check_file_in_s3(bucket_name, file_key, local_file_path)
+
+  - name: fsx-perfomance
+    nodeSelector:
+      karpenter.sh/provisioner-name: fsx-provisioner
+      kubernetes.io/arch: amd64
+      karpenter.sh/capacity-type: on-demand
+    inputs:
+      parameters:
+        - name: local_file_path
+        - name: mount_path
+        - name: pvc_name
+    volumes:
+      - name: "test"
+        persistentVolumeClaim:
+          claimName: "{{inputs.parameters.pvc_name}}"
+    script:
+      image: public.ecr.aws/fsx-csi-driver/aws-fsx-csi-driver:v0.10.1
+      command: ["/bin/sh"]
+      resources:
+        requests:
+          memory: "2048Mi"
+          cpu: "1024m"
+        limits:
+          memory: "4096Mi"
+          cpu: "2048m"
+      volumeMounts:
+        - name: "test"
+          mountPath: "{{inputs.parameters.mount_path}}"
+      source: |
+        #!/bin/bash
+        file_name={{inputs.parameters.local_file_path}}
+
+        while true; do
+          result=$(find $file_name -type f -print0 | xargs -0 -n 1 -P 8 lfs hsm_state | awk '!/\<archived\>/ || /\<dirty\>/' | wc -l)
+          if [ $result -eq 0 ]; then
+            echo "The $file_name is now present in S3."
+            exit 0
+          fi
+          sleep 1
+        done
+  - name: report
+    inputs:
+      parameters:
+        - name: time_intervals
+        - name: config
+        - name: mount_path
+        - name: pvc_name
+        - name: artifacts_bucket_name
+        - name: task_id
+    script:
+      resources:
+        requests:
+          memory: "1024Mi"
+          cpu: "512m"
+        limits:
+          memory: "2048Mi"
+          cpu: "1024m"
+      image: demisto/boto3py3:1.0.0.64080
+      command: ["python"]
+      source: |
+        import sys
+        from datetime import datetime
+        import json
+
+        data = '''{{inputs.parameters.config}}'''
+
+        # Create a file to write the output
+        output_file = open('/tmp/report.txt', 'w')
+
+        # Redirect print statements to the file
+        sys.stdout = output_file
+
+        def print_json_values(data, prefix=''):
+            if isinstance(data, dict):
+                for key, value in data.items():
+                    new_prefix = f"{prefix}.{key}" if prefix else key
+                    print_json_values(value, new_prefix)
+            else:
+                print(f"{prefix}: {data}")
+
+        # Parse the JSON data
+        json_data = json.loads(data)
+
+        # Print all values with the corresponding keys
+        print_json_values(json_data)
+
+        time_intervals = {{inputs.parameters.time_intervals}}
+        for interval in time_intervals:
+            task = interval["task"]
+            start_time_str = interval["start_time_str"]
+            end_time_str = interval["end_time_str"]
+
+            # Remove the "Z" character to make the datetime format compatible
+            start_time_str = start_time_str[:-1]
+            end_time_str = end_time_str[:-1]
+
+            # Convert the time strings to datetime objects
+            start_time = datetime.strptime(start_time_str, "%Y-%m-%dT%H:%M:%S")
+            end_time = datetime.strptime(end_time_str, "%Y-%m-%dT%H:%M:%S")
+
+            # Calculate the time difference in seconds
+            time_difference = (end_time - start_time).total_seconds()
+
+            # Convert time difference to minutes and seconds
+            minutes = int(time_difference // 60)
+            seconds = int(time_difference % 60)
+
+            # Print the time difference for each interval with the task
+            print(f"Duration for {task}: {minutes} minutes, {seconds} seconds")
+
+        # Close the file
+        output_file.close()
+    outputs:
+      artifacts:
+        - name: result
+          path: "/tmp/report.txt"
+          s3:
+            endpoint: s3.amazonaws.com
+            bucket: "{{inputs.parameters.artifacts_bucket_name}}"
+            key: "reports/{{workflow.creationTimestamp}}/stresstest-{{inputs.parameters.task_id}}.txt"
+            useSDKCreds: true

@@ -1,0 +1,22 @@
+apiVersion: karpenter.k8s.aws/v1alpha1
+kind: AWSNodeTemplate
+metadata:
+  name: fsx-node-template
+spec:
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        deleteOnTermination: true
+        iops: 500
+        throughput: 125
+        volumeSize: 20Gi
+        volumeType: gp3
+  metadataOptions:
+    httpEndpoint: enabled
+    httpPutResponseHopLimit: 2
+    httpTokens: required
+  securityGroupSelector:
+    kubernetes.io/karpenter/<PUT_YOUR_CLUSTER_NAME>: owned # this selector check sg that contain this tag and use it
+  subnetSelector:
+    aws-ids: <PUT_YOUR_SUBNET>
+  userData: ''
