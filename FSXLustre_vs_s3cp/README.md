@@ -7,8 +7,6 @@
   alt="ArgoWF stresstest tree"
   style="display: inline-block; margin: 0 auto; max-width: 500px">
 
-The [s3 cp](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3/client/copy.html) command is not a standard command in Unix or Linux, but it appears to be related to Amazon Web Services (AWS) and their S3 (Simple Storage Service) command-line interface (CLI). AWS provides a set of command-line tools for interacting with various AWS services, including S3, and s3 cp is likely a reference to one of these commands.
-
-The s3 cp command in AWS CLI is used to copy files and directories to and from an Amazon S3 bucket. Here's a basic overview of how it works:
+The [s3](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3/client/copy.html) module in Boto3 provides functionality for working with Amazon S3, and it includes the boto3.client('s3').cp function for copying objects between S3 buckets or within the same bucket. This function is similar in purpose to the aws s3 cp command-line tool but is used in Python scripts.
 
 `This folder has two child folders with name **argowf_templates** and **k8s_manifest** each of them is used to prepare your environment to run comprasion between s3cp and fsx lustre so please follow the documentation in each of them and hopefully you will succeed.`
