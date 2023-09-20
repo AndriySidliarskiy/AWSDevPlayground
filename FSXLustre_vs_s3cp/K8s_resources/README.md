@@ -42,21 +42,18 @@ After that you must install [Karpenter](https://github.com/aws/karpenter/tree/ma
 
 And the last step install all required Kubernetes resources it is:
 
-* argowf-sa
-Change in argowf-sa.yaml **PUT_YOUR_ARGOWF_ROLE_ARN** - with the correct role what you creae before
+* Change in argowf-sa.yaml **PUT_YOUR_ARGOWF_ROLE_ARN** - with the correct role what you creae before
 ```sh
 kubectl apply argowf-sa.yaml -n argowf
 ```
-* karpenter
-Change in fsx-node-template.yaml **PUT_YOUR_CLUSTER_NAM** - with the correct Cluster Name
-Change in fsx-node-template.yaml **PUT_YOUR_SUBNET** - with the correct subnet in your VPC
+* Change in fsx-node-template.yaml **PUT_YOUR_CLUSTER_NAM** - with the correct Cluster Name
+* Change in fsx-node-template.yaml **PUT_YOUR_SUBNET** - with the correct subnet in your VPC
 ```sh
 kubectl apply fsx-node-template.yaml 
 kubectl apply fsx-provisioner.yaml
 ```
-* sc
-Change in lustre-persistent1-sc.yaml **PUT_YOUR_SG** - with the correct sg that you will use for FSX Lustre
-Change in lustre-persistent1-sc.yaml **PUT_YOUR_SUBNET** - with the correct subnet that you will use for FSX Lustre
+* Change in lustre-persistent1-sc.yaml **PUT_YOUR_SG** - with the correct sg that you will use for FSX Lustre
+* Change in lustre-persistent1-sc.yaml **PUT_YOUR_SUBNET** - with the correct subnet that you will use for FSX Lustre
 ```sh
 kubectl apply lustre-persistent1-sc.yaml
 ```
