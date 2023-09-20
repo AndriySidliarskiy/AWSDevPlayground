@@ -1,5 +1,5 @@
 ## Prerequisites for lauch stresstest workflow
-### IAM
+### Сreate IAM
 Create an iam role that you use to combine with argowf-sa. Please put this permission for the role and also attach AWS Mnaged policy `AmazonFSxFullAccess`
 ```json
 {
@@ -35,26 +35,28 @@ Create an iam role that you use to combine with argowf-sa. Please put this permi
     ]
 }
 ```
-### K8s Manifests
+### Install charts
 After that you must install [Karpenter](https://github.com/aws/karpenter/tree/main/charts/karpenter) and [ArgoWF](https://github.com/argoproj/argo-helm/tree/main/charts/argo-workflows)
+
+### Install K8s Manifests
 
 And the last step install all required Kubernetes resources it is:
 
 * argowf-sa
+Change in argowf-sa.yaml **PUT_YOUR_ARGOWF_ROLE_ARN** - with the correct role what you creae before
 ```sh
-Cahnge PUT_YOUR_ARGOWF_ROLE_ARN - with correct role what you creae before
 kubectl apply argowf-sa.yaml -n argowf
 ```
 * karpenter
+Change in fsx-node-template.yaml **PUT_YOUR_CLUSTER_NAM** - with the correct Cluster Name
+Change in fsx-node-template.yaml **PUT_YOUR_SUBNET** - with the correct subnet in your VPC
 ```sh
-Change in fsx-node-template.yaml PUT_YOUR_CLUSTER_NAME - with correct role what you creae before
-Cahnge in fsx-node-template.yaml PUT_YOUR_SUBNET - with correct role what you creae before
 kubectl apply fsx-node-template.yaml 
 kubectl apply fsx-provisioner.yaml
 ```
 * sc
+Change in lustre-persistent1-sc.yaml **PUT_YOUR_SG** - with the correct sg that you will use for FSX Lustre
+Change in lustre-persistent1-sc.yaml **PUT_YOUR_SUBNET** - with the correct subnet that you will use for FSX Lustre
 ```sh
-Change in lustre-persistent1-sc.yaml PUT_YOUR_SG - with correct role what you creae before
-Change in lustre-persistent1-sc.yaml PUT_YOUR_SUBNET - with correct role what you creae before
 kubectl apply lustre-persistent1-sc.yaml
 ```
