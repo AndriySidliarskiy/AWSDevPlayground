@@ -1,7 +1,9 @@
 
 
-
-| Command | Description |
+# ArgoWF templates
+This folder contains templates that we use for our test. The main one among them is `stresstest.yaml`, where all the steps are described, which you can see below. There are also additional templates that stresstest refers to in its steps, namely `fsx-data-repository-associations.yaml` used for creating [Data Repository Association ](https://docs.aws.amazon.com/fsx/latest/LustreGuide/create-dra-linked-data-repo.html), `create-fsx-pvc-stresstest.yaml` ensures the creation of PVC using [fsx-csi-driver](https://github.com/kubernetes-sigs/aws-fsx-csi-driver), and `manage-fsx-lustre-pvcs-with-callback-stresstest.yaml` manages the lifecycle of parallel creation of multiple PVCs, their deletion, and checks whether a PVC with the same name already exists to avoid duplicates.
+### Stresstest.yaml
+| Step | Description |
 | --- | --- |
 | `create-pvc` | This step creates a PVC (Persistent Volume Claim) based on the storage class we created, namely 'lustre-persistent-sc' |
 | `get-fsx-id` | This step retrieves the FSx-ID from a secret uses during the creation of a Data Repository Association (DRA). |
