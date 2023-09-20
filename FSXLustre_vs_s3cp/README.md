@@ -9,4 +9,4 @@
 
 The [s3](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3/client/copy.html) module in Boto3 provides functionality for working with Amazon S3, and it includes the boto3.client('s3').cp function for copying objects between S3 buckets or within the same bucket. This function is similar in purpose to the aws s3 cp command-line tool but is used in Python scripts.
 
-`This folder has two child folders with name **argowf_templates** and **k8s_manifest** each of them is used to prepare your environment to run comprasion between s3cp and fsx lustre so please follow the documentation in each of them and hopefully you will succeed.`
+This folder has two child folders with name [argowf_templates](https://github.com/AndriySidliarskiy/AWSDevPlayground/tree/master/FSXLustre_vs_s3cp/argowf_templates) and [k8s_manifest](https://github.com/AndriySidliarskiy/AWSDevPlayground/tree/master/FSXLustre_vs_s3cp/k8s_manifests) each of them is used to prepare your environment to run comprasion between s3cp and fsx lustre so please follow the documentation in each of them and hopefully you will succeed.
