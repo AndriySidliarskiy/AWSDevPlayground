@@ -25,3 +25,10 @@ This folder contains templates that we use for our test. The main one among them
 | `fsx-upload-md5-validation` |  Validate the exported file using MD5 checksum |
 | `report` | Generates a report from this workflow about time spent on uploading or downloading files also on creating PVC and DRA |
 | `delete-pvc` | Delete PVC |
+
+### Multiple-stresstest.yaml
+Multiple stresstest runs 8 parallel tests at the same time, which shows the advantages and disadvantages in more detail of s3cp and FSX Lustre but you can change templates to run more and more stresstest in one time.
+<img
+  src="/FSXLustre_vs_s3cp/img/multiple_stresstest_wf.png"
+  alt="ArgoWF stresstest tree"
+  style="display: inline-block; margin: 0 auto; max-width: 500px">
