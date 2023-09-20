@@ -1,5 +1,5 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![LinkedIn][linkedin-shield]][https://www.linkedin.com/in/andrii-sidliarskyi-3131a01b9/]
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/andrii-sidliarskyi-3131a01b9/)
 
 # AWSDevPlayground
 
