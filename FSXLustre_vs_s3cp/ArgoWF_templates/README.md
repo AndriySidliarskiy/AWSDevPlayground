@@ -2,6 +2,12 @@
 
 # ArgoWF templates
 This folder contains templates that we use for our test. The main one among them is `stresstest.yaml`, where all the steps are described, which you can see below. There are also additional templates that stresstest refers to in its steps, namely `fsx-data-repository-associations.yaml` used for creating [Data Repository Association ](https://docs.aws.amazon.com/fsx/latest/LustreGuide/create-dra-linked-data-repo.html), `create-fsx-pvc-stresstest.yaml` ensures the creation of PVC using [fsx-csi-driver](https://github.com/kubernetes-sigs/aws-fsx-csi-driver), and `manage-fsx-lustre-pvcs-with-callback-stresstest.yaml` manages the lifecycle of parallel creation of multiple PVCs, their deletion, and checks whether a PVC with the same name already exists to avoid duplicates.
+
+<img
+  src="/AWSDevPlayground/FSXLustre_vs_s3cp/Images/Stresstest_wf.png"
+  alt="ArgoWF stresstest tree"
+  style="display: inline-block; margin: 0 auto; max-width: 300px">
+  
 ### Stresstest.yaml
 | Step | Description |
 | --- | --- |
