@@ -39,9 +39,6 @@ spec:
           -   200000m
           -   500000m
       - name: download_bucket_name
-        value: c2i-cs-andriis-euwe1-deployment-834307297212
-        enum:
-          -   c2i-cs-andriis-euwe1-deployment-834307297212
       - name: download_file_name
       - name: multipart_chunksize
         value: 8
@@ -58,9 +55,6 @@ spec:
           -   80
           -   200
       - name: upload_bucket_name
-        value: c2i-cs-andriis-euwe1-output-834307297212
-        enum:
-          -   c2i-cs-andriis-euwe1-output-834307297212
   templates:
   - name: workload
     dag:
